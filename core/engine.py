@@ -106,8 +106,23 @@ def _call_claude(system_prompt: str, history: list[dict]) -> dict:
     try:
         return _extract_json(raw_text)
     except json.JSONDecodeError:
-        logger.error("Claude returned non-JSON response, raw text was:\n%s", raw_text)
-        raise
+        # Last-resort fallback: Claude answered in plain prose instead of
+        # the requested JSON shape (more likely with longer conversation
+        # histories). Rather than fail the customer's message entirely,
+        # use its raw text as the reply. Default should_escalate to True
+        # so a human notices and can double-check this wasn't handled
+        # with the usual structured judgment.
+        logger.warning(
+            "Claude did not return parseable JSON, falling back to raw "
+            "text as the reply. Raw text was:\n%s",
+            raw_text,
+        )
+        return {
+            "reply": raw_text,
+            "should_escalate": True,
+            "escalation_reason": "Response format fallback — Claude's reply couldn't be "
+            "parsed as structured JSON, so this wasn't auto-classified. Worth a quick check.",
+        }
 
 
 def handle_message(
