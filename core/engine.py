@@ -55,28 +55,78 @@ def _mock_response(user_message: str) -> dict:
     }
 
 
+def _find_json_objects(text: str) -> list[dict]:
+    """
+    Scan the text for balanced {...} spans (respecting string literals, so
+    braces inside quoted strings don't throw off the bracket counting),
+    and return every one that successfully parses as JSON, in the order
+    they appear.
+
+    This handles the case where Claude writes a friendly prose answer AND
+    THEN repeats itself as raw JSON afterward (more likely in long
+    conversation histories) — a naive "first { to last }" substring would
+    grab both jumbled together; this isolates each real object correctly.
+    """
+    results = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == "{":
+            depth = 0
+            in_string = False
+            escape = False
+            j = i
+            while j < n:
+                ch = text[j]
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif ch == "\\":
+                        escape = True
+                    elif ch == '"':
+                        in_string = False
+                else:
+                    if ch == '"':
+                        in_string = True
+                    elif ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            candidate = text[i : j + 1]
+                            try:
+                                results.append(json.loads(candidate, strict=False))
+                            except json.JSONDecodeError:
+                                pass
+                            break
+                j += 1
+            i = j + 1
+        else:
+            i += 1
+    return results
+
+
 def _extract_json(raw_text: str) -> dict:
     """
     Claude is instructed to return raw JSON, but models sometimes wrap it
-    in a markdown code fence (```json ... ```) or add a stray sentence
-    before/after it — especially with longer conversation histories. This
-    strips common wrapping and falls back to extracting the {...} block
-    before giving up.
+    in a markdown code fence (```json ... ```), add a stray sentence
+    before/after it, or — especially with longer conversation histories —
+    write a friendly prose answer and then repeat itself as JSON right
+    after. This strips markdown wrapping, then falls back to scanning for
+    every valid {...} object in the text and using the last one found
+    (the model's most "final" attempt), before giving up entirely.
     """
     text = raw_text.strip()
 
     if text.startswith("```"):
-        # Strip a leading ```json or ``` and a trailing ```
         text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
         text = text.removeprefix("json").strip()
 
     try:
-        return json.loads(text)
+        return json.loads(text, strict=False)
     except json.JSONDecodeError:
-        # Last resort: grab the substring between the first { and last }
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(text[start : end + 1])
+        objects = _find_json_objects(text)
+        if objects:
+            return objects[-1]
         raise
 
 
