@@ -13,9 +13,12 @@ don't need to know anything about the database.
 """
 
 import json
+import logging
 import os
 
 from . import db
+
+logger = logging.getLogger("engine")
 
 RESPONSE_INSTRUCTIONS = """
 You are the AI receptionist for this business. Respond to the customer's
@@ -52,6 +55,31 @@ def _mock_response(user_message: str) -> dict:
     }
 
 
+def _extract_json(raw_text: str) -> dict:
+    """
+    Claude is instructed to return raw JSON, but models sometimes wrap it
+    in a markdown code fence (```json ... ```) or add a stray sentence
+    before/after it — especially with longer conversation histories. This
+    strips common wrapping and falls back to extracting the {...} block
+    before giving up.
+    """
+    text = raw_text.strip()
+
+    if text.startswith("```"):
+        # Strip a leading ```json or ``` and a trailing ```
+        text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
+        text = text.removeprefix("json").strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Last resort: grab the substring between the first { and last }
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
+
+
 def _call_claude(system_prompt: str, history: list[dict]) -> dict:
     from anthropic import Anthropic
 
@@ -74,7 +102,12 @@ def _call_claude(system_prompt: str, history: list[dict]) -> dict:
     )
 
     raw_text = response.content[0].text.strip()
-    return json.loads(raw_text)
+
+    try:
+        return _extract_json(raw_text)
+    except json.JSONDecodeError:
+        logger.error("Claude returned non-JSON response, raw text was:\n%s", raw_text)
+        raise
 
 
 def handle_message(
