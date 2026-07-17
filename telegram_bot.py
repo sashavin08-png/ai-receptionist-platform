@@ -29,15 +29,12 @@ import os
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 
-from core import db, engine, notifier
+from core import db, engine, notifier, telegram_api
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     level=logging.INFO,
 )
-# httpx logs full request URLs at INFO level, which would leak the bot
-# token (it's part of the URL path) into the log file.
-logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("telegram_bot")
 
 
@@ -82,7 +79,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
-    await update.message.reply_text(result["reply"])
+    await update.message.reply_text(
+        telegram_api.render_for_telegram(result["reply"]),
+        parse_mode="HTML",
+    )
 
     if result["should_escalate"]:
         tenant = db.get_tenant(tenant_id)
