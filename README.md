@@ -53,69 +53,76 @@ refund") — it should flag `should_escalate: true` in the CLI output.
 
 ## Session 5: Deploying to the cloud
 
-Two pieces now need to run 24/7 instead of just on your laptop:
+Two things needed to change to run this in the cloud instead of just on
+your laptop:
 
-- **`dashboard.py`** — a normal web service (has a URL people visit)
-- **`telegram_bot.py`** — a background worker (polls Telegram forever, no URL)
+- The database needed to move from a local SQLite file (which doesn't
+  survive a restart on most cloud platforms) to real Postgres. `core/db.py`
+  already supports both — it switches automatically based on whether a
+  `DATABASE_URL` environment variable is set.
+- The Telegram bot needed to stop *polling* Telegram (which requires a
+  long-running process — Render only offers that as a paid "Background
+  Worker", no free tier) and instead receive messages via a **webhook**:
+  Telegram calls a URL on your existing free dashboard service the moment
+  someone messages the bot. No separate paid service required, and it's
+  the standard production approach anyway (lower latency than polling).
 
-And the database needs to switch from a local SQLite file (which doesn't
-survive a restart on most cloud platforms) to a real Postgres database.
-`core/db.py` already supports both — it switches automatically based on
-whether a `DATABASE_URL` environment variable is set.
-
-⚠️ Note: the Postgres code path was reviewed carefully but could not be
-tested against a real Postgres server in the environment this was built in
-— test it for real once it's connected below, the same way earlier
-sessions were verified.
+`telegram_bot.py` (polling) still exists and is the easiest way to test
+locally without deploying anything. `dashboard.py` now also exposes
+`/telegram/webhook`, which does the same job for the deployed version.
 
 ### Step 1 — Create a Postgres database on Render
 
 1. On [dashboard.render.com](https://dashboard.render.com), **New +** → **Postgres**
-2. Give it a name, choose the **Free** plan, create it
-3. Once it's up, copy the **Internal Database URL** (starts with `postgres://`)
-   — use the *internal* one if your other services are also on Render, it's
-   faster and doesn't count against external bandwidth
+2. Free plan, same region as your other services, create it
+3. Copy the **Internal Database URL** from its Connections page
 
 ### Step 2 — Deploy the dashboard as a Web Service
 
-1. Push this project to GitHub first (same flow as the lead qualifier:
-   `git remote add origin ...`, `git push -u origin main`)
-2. On Render: **New +** → **Web Service** → connect this repo
+1. Push this project to GitHub (`git remote add origin ...`, `git push -u origin main`)
+2. On Render: **New +** → **Web Service** → connect the repo
 3. Settings:
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn dashboard:app --bind 0.0.0.0:$PORT`
 4. Environment variables:
    - `DATABASE_URL` = the Postgres URL from Step 1
-5. Deploy. Note the public URL Render gives you (e.g.
-   `https://ai-receptionist-xxxx.onrender.com`) — you'll need it in Step 3.
-
-### Step 3 — Deploy the Telegram bot as a Background Worker
-
-1. Same repo, **New +** → **Background Worker**
-2. Settings:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python telegram_bot.py`
-3. Environment variables:
-   - `DATABASE_URL` = same Postgres URL as Step 2
    - `TELEGRAM_BOT_TOKEN` = your bot token
    - `ANTHROPIC_API_KEY` = your Claude API key
    - `OWNER_TELEGRAM_CHAT_ID` = your numeric Telegram id
-   - `DASHBOARD_URL` = the public dashboard URL from Step 2 (this is the
-     "look nicer" fix — escalation alerts will now link to the real
-     dashboard instead of `localhost`)
-4. Deploy.
+5. Deploy, note the public URL Render gives you.
+
+(No need to set `DASHBOARD_URL` — the webhook route figures out its own
+public address from the incoming request, so escalation links are always
+correct without manual configuration.)
+
+### Step 3 — Point Telegram at the webhook (one-time, no server needed)
+
+Visit this URL once in any browser (replace both placeholders):
+
+```
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<YOUR_RENDER_URL>/telegram/webhook
+```
+
+You should get back `{"ok":true,"result":true,"description":"Webhook was set"}`.
+From this point on, Telegram pushes messages straight to your deployed
+dashboard — no bot process needs to be running anywhere.
 
 ### What to test
 
-- Create a tenant via the *deployed* dashboard URL (not localhost)
-- Message the *deployed* bot on Telegram
+- Message the bot on Telegram — it should reply using the deployed service
+  (check Render's logs for the `/telegram/webhook` request coming in)
 - Confirm the conversation shows up on the deployed dashboard
-- Trigger an escalation — the alert you receive should link to the
-  **real** dashboard URL, not localhost
-- Restart the Background Worker service on Render (Manual Deploy →
-  redeploy) and confirm past conversations are still there — that's the
-  proof Postgres is actually being used instead of a SQLite file that
-  would've been wiped
+- Trigger an escalation — the alert should arrive in Telegram and link to
+  the real dashboard URL, not localhost
+- Restart the Web Service on Render (Manual Deploy) and confirm past
+  conversations are still there — proof Postgres is actually persisting
+  data instead of a SQLite file that would've been wiped
+
+### If you outgrow the free tier later
+
+`telegram_bot.py` (the polling version) is still there if you ever want to
+run this as a dedicated worker instead — same `core/engine.py` underneath,
+nothing to rewrite.
 
 ---
 

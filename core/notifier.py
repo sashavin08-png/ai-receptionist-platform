@@ -64,8 +64,9 @@ def format_escalation_message(
     user_message: str,
     reason: str,
     conversation_id: str,
+    dashboard_base_url: str | None = None,
 ) -> str:
-    dashboard_base = os.environ.get("DASHBOARD_URL", "http://localhost:5050")
+    dashboard_base = dashboard_base_url or os.environ.get("DASHBOARD_URL", "http://localhost:5050")
     link = f"{dashboard_base}/tenant/{tenant_id}/conversation/{conversation_id}"
 
     excerpt = user_message if len(user_message) <= 300 else user_message[:300] + "..."
