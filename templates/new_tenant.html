@@ -13,6 +13,10 @@
       placeholder="You are the AI receptionist for... You help customers with... Escalate when..."
       required></textarea>
 
+    <label for="telegram_bot_token">Telegram bot token (optional)</label>
+    <input type="text" id="telegram_bot_token" name="telegram_bot_token"
+      placeholder="123456789:AA... — from @BotFather, so this business gets its own bot">
+
     <button type="submit" class="btn">Create business</button>
   </form>
 {% endblock %}

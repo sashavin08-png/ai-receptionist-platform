@@ -31,10 +31,10 @@ def render_for_telegram(text: str) -> str:
     return text
 
 
-def send_message(chat_id: str, text: str) -> bool:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+def send_message(chat_id: str, text: str, token: str | None = None) -> bool:
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
-        logger.warning("TELEGRAM_BOT_TOKEN not set — cannot send message.")
+        logger.warning("No bot token available — cannot send message.")
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"

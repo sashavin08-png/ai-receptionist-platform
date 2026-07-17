@@ -26,11 +26,12 @@ DB_PATH = Path(__file__).parent.parent / "platform.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tenants (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    system_prompt   TEXT NOT NULL,
-    escalation_rule TEXT DEFAULT 'low_confidence',
-    created_at      TEXT NOT NULL
+    id                 TEXT PRIMARY KEY,
+    name               TEXT NOT NULL,
+    system_prompt      TEXT NOT NULL,
+    escalation_rule    TEXT DEFAULT 'low_confidence',
+    telegram_bot_token TEXT,
+    created_at         TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -116,18 +117,48 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+    _run_migrations()
+
+
+def _run_migrations():
+    """
+    Adds columns that didn't exist in earlier versions of the schema, for
+    databases created before this column was introduced (e.g. the already
+    deployed Render Postgres instance). Safe to call every time init_db()
+    runs — silently does nothing if the column is already there.
+    """
+    try:
+        with get_conn() as conn:
+            conn.execute("ALTER TABLE tenants ADD COLUMN telegram_bot_token TEXT")
+    except Exception:
+        pass
 
 
 # ---------- Tenants ----------
 
-def create_tenant(name: str, system_prompt: str, escalation_rule: str = "low_confidence") -> str:
+def create_tenant(
+    name: str,
+    system_prompt: str,
+    escalation_rule: str = "low_confidence",
+    telegram_bot_token: str | None = None,
+) -> str:
     tenant_id = new_id()
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO tenants (id, name, system_prompt, escalation_rule, created_at) VALUES (?, ?, ?, ?, ?)",
-            (tenant_id, name, system_prompt, escalation_rule, now_iso()),
+            """INSERT INTO tenants
+               (id, name, system_prompt, escalation_rule, telegram_bot_token, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (tenant_id, name, system_prompt, escalation_rule, telegram_bot_token, now_iso()),
         )
     return tenant_id
+
+
+def update_tenant_bot_token(tenant_id: str, telegram_bot_token: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tenants SET telegram_bot_token = ? WHERE id = ?",
+            (telegram_bot_token, tenant_id),
+        )
 
 
 def get_tenant(tenant_id: str) -> sqlite3.Row | None:

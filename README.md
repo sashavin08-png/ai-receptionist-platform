@@ -44,10 +44,65 @@ refund") — it should flag `should_escalate: true` in the CLI output.
 
 ## What's next
 
-- Let the dashboard actually configure which tenant a given Telegram bot
-  routes to, instead of the current TENANT_ID env var
 - Basic auth on the dashboard (right now anyone with the URL can see all
   conversations — fine for a personal demo, not fine for a real client)
+
+---
+
+## Session 6: Real bot-to-tenant routing
+
+Before this session, the Telegram webhook always answered as whichever
+tenant happened to be "first" in the database — fine for one business,
+broken the moment a second one existed. Now each business can have its
+**own** Telegram bot, and both work independently, at the same time, on
+the same free Web Service.
+
+### How it works
+
+- Each tenant can store its own `telegram_bot_token` (set when creating
+  the business, or added later via `db.update_tenant_bot_token()`)
+- The webhook URL now includes the tenant's id:
+  `/telegram/webhook/<tenant_id>` — so the URL itself identifies which
+  business a message is for, no guessing needed
+- The dashboard's per-business page now shows that exact URL, ready to
+  register
+
+### Setup for a new business
+
+1. Create a bot via @BotFather for this business specifically
+2. On the dashboard, **+ Add business**, paste that bot's token into
+   "Telegram bot token"
+3. Open that business's page on the dashboard — copy the webhook URL shown
+4. Register it once:
+   ```
+   https://api.telegram.org/bot<THAT_BUSINESS_BOT_TOKEN>/setWebhook?url=<THE_URL_FROM_STEP_3>
+   ```
+5. Message that bot — it replies using that business's own instructions
+   and memory, completely independent of any other business's bot
+
+### What to test
+
+- Create two businesses with different bot tokens and different system
+  prompts (e.g. a skincare shop and a bakery)
+- Message each bot separately — confirm each answers according to its own
+  instructions, and conversations don't cross over
+- Check the dashboard — each business's conversations list stays separate
+
+### Migration note
+
+Existing deployments (the Postgres database already running on Render)
+didn't have a `telegram_bot_token` column before this session. `core/db.py`
+now runs a small migration automatically on startup — no manual database
+changes needed, just redeploy.
+
+⚠️ The webhook URL itself also changed shape (from `/telegram/webhook` to
+`/telegram/webhook/<tenant_id>`). If you already had a bot working from
+Session 5, its webhook is still pointed at the old URL, which no longer
+exists. Re-register it: open that business's page on the dashboard, copy
+the new URL shown there, and run `setWebhook` again with it. The bot will
+keep working exactly as before — its `telegram_bot_token` field is empty
+in the database, so it automatically falls back to the global
+`TELEGRAM_BOT_TOKEN` environment variable, same as previously.
 
 ---
 
@@ -68,8 +123,10 @@ your laptop:
   the standard production approach anyway (lower latency than polling).
 
 `telegram_bot.py` (polling) still exists and is the easiest way to test
-locally without deploying anything. `dashboard.py` now also exposes
-`/telegram/webhook`, which does the same job for the deployed version.
+locally without deploying anything. `dashboard.py` now also exposes a
+per-business webhook (`/telegram/webhook/<tenant_id>` — see Session 6
+below for why it's per-business), which does the same job for the
+deployed version.
 
 ### Step 1 — Create a Postgres database on Render
 
@@ -115,10 +172,12 @@ using `TELEGRAM_BOT_TOKEN` (the old behavior).
 
 ### Step 3 — Point Telegram at the webhook (one-time, no server needed)
 
-Visit this URL once in any browser (replace both placeholders):
+Create at least one business on the deployed dashboard first (**+ Add
+business**) — its page will show you the exact webhook URL to use,
+including its tenant id. Visit this once in any browser:
 
 ```
-https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<YOUR_RENDER_URL>/telegram/webhook
+https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<URL_SHOWN_ON_DASHBOARD>
 ```
 
 You should get back `{"ok":true,"result":true,"description":"Webhook was set"}`.
@@ -128,7 +187,7 @@ dashboard — no bot process needs to be running anywhere.
 ### What to test
 
 - Message the bot on Telegram — it should reply using the deployed service
-  (check Render's logs for the `/telegram/webhook` request coming in)
+  (check Render's logs for the `/telegram/webhook/...` request coming in)
 - Confirm the conversation shows up on the deployed dashboard
 - Trigger an escalation — the alert should arrive in Telegram and link to
   the real dashboard URL, not localhost
