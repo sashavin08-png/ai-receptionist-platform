@@ -24,12 +24,17 @@ def send_owner_alert(message: str) -> bool:
     """
     Send a plain-text alert to the configured owner chat via Telegram.
 
-    Requires TELEGRAM_BOT_TOKEN and OWNER_TELEGRAM_CHAT_ID to be set.
-    Returns True if delivered, False if not configured or delivery failed
-    (never raises — a failed notification shouldn't crash the bot that
-    triggered it).
+    Uses a dedicated ADMIN_BOT_TOKEN if one is set (recommended — keeps
+    owner notifications in a separate chat from customer conversations,
+    even when the same Telegram account is used for both during testing).
+    Falls back to TELEGRAM_BOT_TOKEN (the customer-facing bot) if no
+    separate admin bot is configured.
+
+    Requires OWNER_TELEGRAM_CHAT_ID to be set either way. Returns True if
+    delivered, False if not configured or delivery failed (never raises —
+    a failed notification shouldn't crash the bot that triggered it).
     """
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = os.environ.get("ADMIN_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
     owner_chat_id = os.environ.get("OWNER_TELEGRAM_CHAT_ID")
 
     if not token or not owner_chat_id:

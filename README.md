@@ -86,14 +86,32 @@ locally without deploying anything. `dashboard.py` now also exposes
    - **Start Command**: `gunicorn dashboard:app --bind 0.0.0.0:$PORT`
 4. Environment variables:
    - `DATABASE_URL` = the Postgres URL from Step 1
-   - `TELEGRAM_BOT_TOKEN` = your bot token
+   - `TELEGRAM_BOT_TOKEN` = your customer-facing bot token
    - `ANTHROPIC_API_KEY` = your Claude API key
    - `OWNER_TELEGRAM_CHAT_ID` = your numeric Telegram id
+   - `ADMIN_BOT_TOKEN` = *(recommended)* token of a **second, separate**
+     bot used only for escalation alerts — see below for why
 5. Deploy, note the public URL Render gives you.
 
 (No need to set `DASHBOARD_URL` — the webhook route figures out its own
 public address from the incoming request, so escalation links are always
 correct without manual configuration.)
+
+### Why a separate admin bot
+
+Telegram doesn't support separate "threads" within one private chat — if
+the owner alert and the customer conversation both come from the same bot
+to the same Telegram account (e.g. while testing solo, playing both
+roles), they land in the same chat, mixed together. In real use, the
+business owner and the customer are different people so this naturally
+doesn't happen — but a second bot keeps it clean either way, and makes
+testing solo much easier to follow.
+
+To set one up: message **@BotFather** again, `/newbot`, give it a
+different name (e.g. "Luna Skincare Admin Alerts"), copy its token into
+`ADMIN_BOT_TOKEN`. Message that new bot once yourself so it's allowed to
+message you back. If `ADMIN_BOT_TOKEN` isn't set, alerts fall back to
+using `TELEGRAM_BOT_TOKEN` (the old behavior).
 
 ### Step 3 — Point Telegram at the webhook (one-time, no server needed)
 
