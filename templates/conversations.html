@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ tenant['name'] }} — Conversations{% endblock %}
+{% block content %}
+  <div class="eyebrow"><a href="{{ url_for('tenants_list') }}">&larr; Businesses</a></div>
+  <h1>{{ tenant['name'] }}</h1>
+
+  <div class="filters">
+    <a class="filter-pill {{ 'selected' if status_filter == 'all' else '' }}"
+       href="{{ url_for('tenant_conversations', tenant_id=tenant['id']) }}">
+      All ({{ counts.values() | sum }})
+    </a>
+    <a class="filter-pill {{ 'selected' if status_filter == 'active' else '' }}"
+       href="{{ url_for('tenant_conversations', tenant_id=tenant['id'], status='active') }}">
+      Active ({{ counts.get('active', 0) }})
+    </a>
+    <a class="filter-pill {{ 'selected' if status_filter == 'escalated' else '' }}"
+       href="{{ url_for('tenant_conversations', tenant_id=tenant['id'], status='escalated') }}">
+      Escalated ({{ counts.get('escalated', 0) }})
+    </a>
+    <a class="filter-pill {{ 'selected' if status_filter == 'closed' else '' }}"
+       href="{{ url_for('tenant_conversations', tenant_id=tenant['id'], status='closed') }}">
+      Closed ({{ counts.get('closed', 0) }})
+    </a>
+  </div>
+
+  {% if conversations %}
+    {% for c in conversations %}
+      <a class="card" href="{{ url_for('conversation_thread', tenant_id=tenant['id'], conversation_id=c['id']) }}">
+        <div class="card-title">
+          {{ c['channel'] | upper }} &middot; {{ c['external_user_id'] }}
+        </div>
+        <div class="card-meta">
+          <span class="badge {{ c['status'] }}">{{ c['status'] }}</span>
+          <span>{{ c['message_count'] }} messages</span>
+          <span>last activity: {{ c['last_message_at'][:16] }}</span>
+        </div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No conversations in this category yet.</div>
+  {% endif %}
+{% endblock %}

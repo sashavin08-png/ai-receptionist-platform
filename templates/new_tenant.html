@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Add business — Receptionist Dashboard{% endblock %}
+{% block content %}
+  <div class="eyebrow"><a href="{{ url_for('tenants_list') }}">&larr; Businesses</a></div>
+  <h1>Add a new business</h1>
+
+  <form method="POST">
+    <label for="name">Business name</label>
+    <input type="text" id="name" name="name" placeholder="e.g. Luna Skincare" required>
+
+    <label for="system_prompt">Instructions for the AI receptionist</label>
+    <textarea id="system_prompt" name="system_prompt"
+      placeholder="You are the AI receptionist for... You help customers with... Escalate when..."
+      required></textarea>
+
+    <button type="submit" class="btn">Create business</button>
+  </form>
+{% endblock %}

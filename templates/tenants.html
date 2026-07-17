@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Tenants — Receptionist Dashboard{% endblock %}
+{% block content %}
+  <div class="eyebrow">AI Receptionist Platform</div>
+  <h1>Businesses</h1>
+
+  <div class="btn-row">
+    <a href="{{ url_for('new_tenant') }}" class="btn">+ Add business</a>
+  </div>
+
+  {% if tenants %}
+    {% for t in tenants %}
+      {% set s = stats[t['id']] %}
+      <a class="card" href="{{ url_for('tenant_conversations', tenant_id=t['id']) }}">
+        <div class="card-title">{{ t['name'] }}</div>
+        <div class="stat-row">
+          <span><b>{{ s.total }}</b> conversations</span>
+          <span><b>{{ s.active }}</b> active</span>
+          {% if s.escalated > 0 %}
+            <span style="color: var(--escalated);"><b>{{ s.escalated }}</b> escalated</span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No businesses yet. Add one to get started.</div>
+  {% endif %}
+{% endblock %}

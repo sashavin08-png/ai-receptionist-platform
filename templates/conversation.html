@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Conversation — {{ tenant['name'] }}{% endblock %}
+{% block content %}
+  <div class="eyebrow">
+    <a href="{{ url_for('tenant_conversations', tenant_id=tenant['id']) }}">&larr; {{ tenant['name'] }} conversations</a>
+  </div>
+  <h1>{{ conversation['channel'] | upper }} &middot; {{ conversation['external_user_id'] }}</h1>
+
+  <div class="stat-row" style="margin-bottom: 20px;">
+    <span class="badge {{ conversation['status'] }}">{{ conversation['status'] }}</span>
+    <span>started {{ conversation['created_at'][:16] }}</span>
+  </div>
+
+  <div class="message-thread">
+    {% if messages %}
+      {% for m in messages %}
+        <div class="message {{ m['role'] }}">
+          <div class="message-bubble">{{ m['content'] }}</div>
+          <div class="message-meta">{{ m['role'] }} &middot; {{ m['created_at'][11:16] }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">No messages yet.</div>
+    {% endif %}
+  </div>
+{% endblock %}
