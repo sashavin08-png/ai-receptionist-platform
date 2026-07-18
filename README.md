@@ -44,10 +44,87 @@ refund") — it should flag `should_escalate: true` in the CLI output.
 
 ## What's next
 
-- Basic auth on the dashboard (right now anyone with the URL can see all
-  conversations — fine for a personal demo, not fine for a real client)
+Nothing pressing right now — the platform is functional end to end.
 
 ---
+
+## Session 7: Dashboard authentication
+
+Before this session, anyone with the dashboard URL could see every
+business's conversations — fine for a solo demo, not fine once this is
+shared with a real client or posted publicly (e.g. on Upwork).
+
+The dashboard now supports HTTP Basic Auth (the plain username/password
+prompt built into every browser) via two environment variables:
+
+- `DASHBOARD_USERNAME`
+- `DASHBOARD_PASSWORD`
+
+If both are set, every dashboard page requires them. If neither is set
+(e.g. local development), the dashboard behaves exactly as before —
+nothing breaks, no extra setup needed to keep testing locally.
+
+**The Telegram webhook (`/telegram/webhook/<tenant_id>`) always stays
+open, regardless of these settings** — Telegram calls it directly and has
+no way to supply a username/password, so protecting it would just break
+every bot.
+
+### Setup
+
+On Render, add to the Web Service's environment variables:
+
+```
+DASHBOARD_USERNAME=whatever-you-want
+DASHBOARD_PASSWORD=a-real-password-not-something-guessable
+```
+
+Redeploy. Visiting the dashboard URL will now prompt for credentials in
+the browser before showing anything.
+
+### What to test
+
+- Visit the dashboard URL logged out (private/incognito window) — should
+  get a login prompt, not the tenant list
+- Wrong password — should be rejected
+- Correct password — should work normally
+- The Telegram bots should keep working exactly as before, untouched by
+  this change (webhook path is exempt)
+
+### Webhook secret token (protects against fake requests)
+
+Basic Auth can't protect the Telegram webhook itself — Telegram has no way
+to supply a username/password when it calls it, so that route has to stay
+open to anyone who knows the URL. Without anything else, someone who
+learns a tenant's webhook URL (visible in the dashboard) could POST fake
+"Telegram" messages directly at it, making your Claude API key rack up
+real usage on requests that were never actually from a customer.
+
+Telegram has a built-in mechanism for exactly this: a `secret_token` you
+choose when registering the webhook, which Telegram then includes as a
+header (`X-Telegram-Bot-Api-Secret-Token`) on every real request it sends.
+The dashboard now checks that header if `TELEGRAM_WEBHOOK_SECRET` is set.
+
+**Setup:**
+
+1. Pick a random secret string (anything long and hard to guess)
+2. Set it as an environment variable on the Web Service:
+   ```
+   TELEGRAM_WEBHOOK_SECRET=your-random-secret-here
+   ```
+3. When registering (or re-registering) each bot's webhook, add
+   `&secret_token=...` to the URL:
+   ```
+   https://api.telegram.org/bot<TOKEN>/setWebhook?url=<WEBHOOK_URL>&secret_token=your-random-secret-here
+   ```
+
+If `TELEGRAM_WEBHOOK_SECRET` isn't set, the check is skipped entirely —
+existing bots keep working with no changes required. It only becomes
+mandatory once you set the environment variable AND re-register each
+bot's webhook with the matching `secret_token`.
+
+**What to test:** a request to the webhook URL without the header (or
+with the wrong one) should get `401`; the real bots, once re-registered
+with the secret, should keep working normally.
 
 ## Session 6: Real bot-to-tenant routing
 

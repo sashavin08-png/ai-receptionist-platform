@@ -16,6 +16,7 @@ Then open http://localhost:5050
 
 import logging
 import os
+import secrets
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
@@ -24,8 +25,41 @@ from core import db, engine, notifier, telegram_api
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME")
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+
 app = Flask(__name__)
 db.init_db()
+
+
+@app.before_request
+def require_dashboard_auth():
+    """
+    Protects every dashboard page with HTTP Basic Auth — except the
+    Telegram webhook, which Telegram itself needs to call without any
+    credentials. If DASHBOARD_USERNAME/DASHBOARD_PASSWORD aren't set
+    (e.g. local development), auth is skipped entirely so nothing breaks
+    for local testing.
+    """
+    if request.path.startswith("/telegram/webhook/"):
+        return
+
+    if not DASHBOARD_USERNAME or not DASHBOARD_PASSWORD:
+        return
+
+    auth = request.authorization
+    valid = (
+        auth is not None
+        and secrets.compare_digest(auth.username, DASHBOARD_USERNAME)
+        and secrets.compare_digest(auth.password, DASHBOARD_PASSWORD)
+    )
+    if not valid:
+        return (
+            "Authentication required",
+            401,
+            {"WWW-Authenticate": 'Basic realm="AI Receptionist Dashboard"'},
+        )
 
 
 @app.route("/")
@@ -103,6 +137,12 @@ def telegram_webhook(tenant_id):
     business's own bot token. This lets multiple businesses each run their
     own Telegram bot simultaneously, on one shared free Web Service.
     """
+    if TELEGRAM_WEBHOOK_SECRET:
+        incoming_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not incoming_secret or not secrets.compare_digest(incoming_secret, TELEGRAM_WEBHOOK_SECRET):
+            logger.warning("Webhook request rejected — missing/invalid secret token.")
+            return jsonify({"ok": False}), 401
+
     tenant = db.get_tenant(tenant_id)
     if tenant is None:
         logger.warning("Webhook called for unknown tenant_id=%s", tenant_id)
